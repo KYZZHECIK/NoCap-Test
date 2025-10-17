@@ -11,6 +11,7 @@ from torch import nn
 import torch.distributed as dist
 import torch.nn.functional as F
 import torch._inductor.config as config
+from contextlib import nullcontext
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group, destroy_process_group
 
@@ -36,8 +37,9 @@ class Rotary(torch.nn.Module):
             self.seq_len_cached = seq_len
             t = torch.arange(seq_len, device=x.device).type_as(self.inv_freq)
             freqs = torch.outer(t, self.inv_freq).to(x.device)
-            self.cos_cached = freqs.cos()
-            self.sin_cached = freqs.sin()
+            self.cos_cached = freqs.cos().to(dtype=x.dtype)
+            self.sin_cached = freqs.sin().to(dtype=x.dtype)
+            
         return self.cos_cached[None, :, None, :], self.sin_cached[None, :, None, :]
 
 
@@ -421,7 +423,10 @@ if __name__ == "__main__":
     print0(f"tokens per iteration: {tokens_per_iter:,}")
 
     # set up a context manager following the desired dtype and device
-    ctx = torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16)
+    # NOTE: GPU does not support bfloats, switching to float32
+    # ctx = torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16)
+    ctx = nullcontext()
+    scaler = torch.amp.GradScaler("cuda", enabled=False)
 
     # load tokens
     train_loader = DistributedDataLoader(args.input_bin, B, T, ddp_rank, ddp_world_size)
