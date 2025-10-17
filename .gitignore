@@ -2,3 +2,5 @@ data/fineweb10B/
 pylog124M/
 logs/
 wandb/
+.venv
+*.log
